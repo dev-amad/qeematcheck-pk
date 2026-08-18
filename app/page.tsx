@@ -1,9 +1,47 @@
 'use client';
 
-import MarketFacts from '../src/components/MarketFacts';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { createBrowserClient } from '@supabase/ssr';
+import type { User } from '@supabase/supabase-js';
+import MarketFacts from '../src/components/MarketFacts';
+
+// Global Supabase client initialized with non-null assertions for Vercel build compatibility
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function HomePage() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Check current active session
+    const checkUser = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user ?? null);
+      } catch (err) {
+        console.error('Error loading auth session:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkUser();
+
+    // Real-time listener for authentication state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   return (
     <div className="flex flex-col w-full relative overflow-hidden bg-[#0c1324] text-[#dce1fb] min-h-screen">
       {/* Background decorative glowing elements */}
@@ -30,16 +68,32 @@ export default function HomePage() {
             Real-time market price tracking and shopkeeper safeguard features to ensure fair trade for everyone.
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 mt-8 w-full sm:w-auto justify-center">
+          <div className="flex flex-col sm:flex-row gap-4 mt-8 w-full sm:w-auto justify-center items-center">
             <Link
               href="#about"
-              className="px-8 py-4 bg-[#5af0b3] text-[#003825] font-semibold text-xs tracking-wider uppercase rounded-xl shadow-[0_0_20px_rgba(90,240,179,0.3)] hover:shadow-[0_0_30px_rgba(90,240,179,0.5)] hover:-translate-y-1 transition-all duration-300 flex items-center justify-center gap-2 group"
+              className="px-8 py-4 bg-[#5af0b3] text-[#003825] font-semibold text-xs tracking-wider uppercase rounded-xl shadow-[0_0_20px_rgba(90,240,179,0.3)] hover:shadow-[0_0_30px_rgba(90,240,179,0.5)] hover:-translate-y-1 transition-all duration-300 flex items-center justify-center gap-2 group font-mono"
             >
               EXPLORE PLATFORM
               <span className="material-symbols-outlined text-[18px] group-hover:translate-x-1 transition-transform">
                 arrow_forward
               </span>
             </Link>
+
+            {/* Dynamic Login / Account status pill */}
+            {!loading && (
+              user ? (
+                <div className="px-6 py-4 bg-[#191f31] border border-[#5af0b3]/30 text-[#5af0b3] font-mono text-xs rounded-xl flex items-center justify-center">
+                  Signed in as {user.email}
+                </div>
+              ) : (
+                <Link
+                  href="/login"
+                  className="px-8 py-4 bg-[#191f31] border border-[#2e3447] text-[#bbcac0] hover:text-[#dce1fb] hover:border-[#5af0b3]/50 font-semibold text-xs tracking-wider uppercase rounded-xl transition-all duration-300 flex items-center justify-center font-mono"
+                >
+                  ACCOUNT LOGIN
+                </Link>
+              )
+            )}
           </div>
         </div>
       </section>

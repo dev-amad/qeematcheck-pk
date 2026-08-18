@@ -1,11 +1,14 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-export const fetchCache = 'force-no-store';
-
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
+
+// Initialize globally outside the component using non-null assertions
+const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 function ResetPasswordForm() {
     const router = useRouter();
@@ -27,10 +30,6 @@ function ResetPasswordForm() {
         }
 
         try {
-            const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-            const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-            const supabase = createBrowserClient(url, key);
-
             const { error: updateError } = await supabase.auth.updateUser({
                 password: password,
             });
