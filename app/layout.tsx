@@ -5,16 +5,7 @@ import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
   title: 'QeematCheck 🇵🇰 | Know the price. Compare. Speak up.',
-  description:
-    'Public price verification and community reporting platform for Karachi, Pakistan. Benchmark consumer prices against official Commissioner Karachi notifications.',
-  keywords: [
-    'QeematCheck',
-    'Karachi Price Check',
-    'Karachi Grocery Prices',
-    'Commissioner Karachi Price List',
-    'Public Price Verification',
-    'Civic Tech Pakistan',
-  ],
+  description: 'Public price verification platform for Karachi, Pakistan.',
 };
 
 export default function RootLayout({
@@ -23,10 +14,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full">
-      <body className="flex flex-col min-h-screen bg-slate-50 text-slate-900 antialiased">
+    <html lang="en" className="h-full dark">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
+        />
+      </head>
+      <body className="flex flex-col min-h-screen bg-[#0c1324] text-[#dce1fb] antialiased">
         <Navbar />
-        <main className="flex-1">{children}</main>
+        <main className="flex-1 bg-[#0c1324]">{children}</main>
         <Footer />
       </body>
     </html>

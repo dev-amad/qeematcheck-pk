@@ -59,7 +59,7 @@ export default function Navbar() {
           <div className="flex items-center">
             <Link href="/" className="flex flex-col">
               <span className="text-xl font-bold tracking-tight text-white hover:text-emerald-400 transition-colors duration-200">
-                Kimat Check PK
+                Qeemat Check PK
               </span>
               <span className="text-[11px] text-emerald-400 font-medium tracking-wide block -mt-0.5">
                 Karachi Price Transparency
@@ -78,11 +78,10 @@ export default function Navbar() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-200 ease-in-out ${
-                    isActive
-                      ? 'bg-emerald-700 text-white shadow-sm'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                  }`}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-200 ease-in-out ${isActive
+                    ? 'bg-emerald-700 text-white shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
                 >
                   <Icon className="w-4 h-4" />
                   <span>{link.label}</span>
@@ -151,11 +150,10 @@ export default function Navbar() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-base font-medium transition-all duration-200 ${
-                  isActive
-                    ? 'bg-emerald-700 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
+                className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-base font-medium transition-all duration-200 ${isActive
+                  ? 'bg-emerald-700 text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
               >
                 <Icon className="w-5 h-5" />
                 <span>{link.label}</span>

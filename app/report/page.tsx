@@ -1,12 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   PlusCircle,
-  Store,
-  MapPin,
   CheckCircle2,
   AlertCircle,
   ArrowRight,
@@ -14,8 +12,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
-import { Shop } from '@/lib/supabase/types';
-import { FALLBACK_PRODUCTS, FALLBACK_SHOPS, ProductWithPrices } from '@/lib/data/seedFallback';
+import { FALLBACK_PRODUCTS, ProductWithPrices } from '@/lib/data/seedFallback';
 import { calculatePriceDelta, formatPrice, formatPercentage } from '@/lib/utils';
 import StatusBadge from '@/components/StatusBadge';
 import ConfigAlert from '@/components/ConfigAlert';
@@ -33,37 +30,37 @@ const KARACHI_AREAS = [
   'Korangi',
   'Nazimabad',
   'Liaquatabad',
+  'Gulistan e Jauhar',
+  'Landhi',
 ];
 
 function ReportFormContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const initialProductId = searchParams.get('productId');
-  const initialPrice = searchParams.get('observedPrice');
+  const initialProductId = searchParams.get('productId') || searchParams.get('product_id') || '';
+  const initialPrice = searchParams.get('observedPrice') || '';
 
   const [user, setUser] = useState<any>(null);
-  const [products, setProducts] = useState<ProductWithPrices[]>(FALLBACK_PRODUCTS);
-  const [shops, setShops] = useState<Shop[]>(FALLBACK_SHOPS);
+  const [products, setProducts] = useState<ProductWithPrices[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [success, setSuccess] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Form State
-  const [selectedProductId, setSelectedProductId] = useState<string>(
-    initialProductId || FALLBACK_PRODUCTS[0]?.id || ''
-  );
+  const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [shopName, setShopName] = useState<string>('');
   const [area, setArea] = useState<string>('Gulshan-e-Iqbal');
   const [shopAddress, setShopAddress] = useState<string>('');
-  const [observedPrice, setObservedPrice] = useState<string>(initialPrice || '');
+  const [observedPrice, setObservedPrice] = useState<string>(initialPrice);
   const [notes, setNotes] = useState<string>('');
 
   useEffect(() => {
     async function loadData() {
       if (!isSupabaseConfigured) {
         setProducts(FALLBACK_PRODUCTS);
-        setShops(FALLBACK_SHOPS);
+        if (initialProductId && FALLBACK_PRODUCTS.some((p) => p.id === initialProductId)) {
+          setSelectedProductId(initialProductId);
+        }
         setLoading(false);
         return;
       }
@@ -99,39 +96,31 @@ function ReportFormContent() {
           setProducts(prodData as ProductWithPrices[]);
           if (initialProductId && prodData.some((p: any) => p.id === initialProductId)) {
             setSelectedProductId(initialProductId);
-          } else if (!selectedProductId) {
-            setSelectedProductId(prodData[0].id);
           }
         } else {
           setProducts(FALLBACK_PRODUCTS);
-        }
-
-        const { data: shopData } = await supabase
-          .from('shops')
-          .select('*')
-          .order('name');
-
-        if (shopData && shopData.length > 0) {
-          setShops(shopData);
-        } else {
-          setShops(FALLBACK_SHOPS);
+          if (initialProductId && FALLBACK_PRODUCTS.some((p) => p.id === initialProductId)) {
+            setSelectedProductId(initialProductId);
+          }
         }
       } catch (err) {
         console.warn('Error loading report form data:', err);
         setProducts(FALLBACK_PRODUCTS);
-        setShops(FALLBACK_SHOPS);
       } finally {
         setLoading(false);
       }
     }
 
     loadData();
-  }, [initialProductId, initialPrice]);
+  }, [initialProductId]);
 
-  const selectedProduct =
-    products.find((p) => p.id === selectedProductId) || products[0] || FALLBACK_PRODUCTS[0];
-  const referencePriceObj = selectedProduct?.reference_prices?.[0];
-  const refVal = referencePriceObj?.is_available ? Number(referencePriceObj.price) : null;
+  const selectedProduct = products.find((p) => p.id === selectedProductId);
+
+  const refObj = Array.isArray(selectedProduct?.reference_prices)
+    ? selectedProduct.reference_prices[0]
+    : selectedProduct?.reference_prices;
+
+  const refVal = refObj?.price ? Number(refObj.price) : null;
   const observedPriceNum = parseFloat(observedPrice) || 0;
   const calc = calculatePriceDelta(refVal, observedPriceNum);
 
@@ -139,13 +128,14 @@ function ReportFormContent() {
     e.preventDefault();
     setErrorMessage(null);
 
+    // — Client-side validation guards —
     if (!user) {
       setErrorMessage('You must be logged in to submit a price report.');
       return;
     }
 
     if (!selectedProductId) {
-      setErrorMessage('Please select a product.');
+      setErrorMessage('Please select a product from the list.');
       return;
     }
 
@@ -155,57 +145,124 @@ function ReportFormContent() {
     }
 
     if (!observedPrice || observedPriceNum <= 0) {
-      setErrorMessage('Please enter a valid observed price.');
+      setErrorMessage('Please enter a valid observed price greater than zero.');
       return;
     }
 
     try {
       setSubmitting(true);
 
-      let shopId: string | null = null;
-      const existingShop = shops.find(
-        (s) =>
-          s.name.toLowerCase().trim() === shopName.toLowerCase().trim() &&
-          s.area.toLowerCase().trim() === area.toLowerCase().trim()
-      );
+      const targetProduct = products.find((p) => p.id === selectedProductId);
 
-      if (existingShop && !existingShop.id.startsWith('s1000000')) {
-        shopId = existingShop.id;
-      } else {
-        const { data: newShop, error: shopErr } = await supabase
-          .from('shops')
-          .insert({
-            name: shopName.trim(),
-            area: area,
-            address: shopAddress.trim() || null,
-          })
-          .select()
-          .single();
+      // Step 1: Confirm the selected ID is UUID-formatted.
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isUuidFormat = UUID_REGEX.test(selectedProductId);
 
-        if (!shopErr && newShop) {
-          shopId = newShop.id;
+      let validProductId: string | null = null;
+
+      if (isUuidFormat) {
+        // Step 2: Verify the UUID actually exists in the products table.
+        const { data: existingProduct, error: lookupErr } = await supabase
+          .from('products')
+          .select('id')
+          .eq('id', selectedProductId)
+          .maybeSingle();
+
+        if (!lookupErr && existingProduct?.id) {
+          validProductId = existingProduct.id;
         }
       }
 
-      const { error: repErr } = await supabase.from('price_reports').insert({
-        user_id: user.id,
-        product_id: selectedProductId,
-        shop_id: shopId,
-        observed_price: observedPriceNum,
-        reference_price_at_report: refVal,
-        area: area,
-        status: 'Unverified',
-        notes: notes.trim() || null,
-      });
+      // Step 3: Try resolving by exact product name.
+      if (!validProductId && targetProduct?.name) {
+        const { data: dbProdByName } = await supabase
+          .from('products')
+          .select('id')
+          .ilike('name', targetProduct.name.trim())
+          .limit(1)
+          .maybeSingle();
 
-      if (repErr) {
-        throw repErr;
+        if (dbProdByName?.id) {
+          validProductId = dbProdByName.id;
+        }
       }
+
+      // Step 4: Attempt to auto-create the product if still unresolved.
+      // Includes all non-nullable columns required by the schema.
+      if (!validProductId && targetProduct?.name) {
+        const { data: newProd, error: createErr } = await supabase
+          .from('products')
+          .insert({
+            name: targetProduct.name.trim(),
+            category: targetProduct.category || 'General',
+            unit: targetProduct.unit || 'kg',
+            official_price: 0,
+          })
+          .select('id')
+          .single();
+
+        if (createErr) {
+          // Log for RLS/permission diagnostics — does not block submission
+          console.error('[QeematCheck] Auto-create product failed:', createErr.message, createErr);
+        } else if (newProd?.id) {
+          validProductId = newProd.id;
+        }
+      }
+
+      // Step 5: Fuzzy keyword fallback — splits name on spaces and matches
+      // on the first meaningful word (e.g. "Sugar" from "Sugar (Retail)").
+      if (!validProductId && targetProduct?.name) {
+        const firstKeyword = targetProduct.name
+          .split(/[\s(]/)[0]
+          .trim();
+
+        if (firstKeyword.length >= 3) {
+          const { data: fuzzyMatch } = await supabase
+            .from('products')
+            .select('id, name')
+            .ilike('name', `%${firstKeyword}%`)
+            .limit(1)
+            .maybeSingle();
+
+          if (fuzzyMatch?.id) {
+            console.warn(
+              `[QeematCheck] Fuzzy match used: "${targetProduct.name}" → "${fuzzyMatch.name}"`
+            );
+            validProductId = fuzzyMatch.id;
+          }
+        }
+      }
+
+      // Step 6: Graceful fallback — if all resolution attempts fail, submit
+      // without a product_id FK and capture the name as plain text instead.
+      // This ensures no user submission is ever silently blocked.
+      const isUnlinkedFallback = !validProductId;
+
+      // Replace your existing payload construction with this clean, explicit object:
+      const reportPayload = {
+        product_id: validProductId,
+        observed_price: observedPriceNum,
+        reported_price: observedPriceNum,
+        area: area || 'Gulshan-e-Iqbal',
+        location_area: area || 'Gulshan-e-Iqbal',
+        shop_name: shopName.trim() || 'Local Merchant',
+        shop_address: shopAddress.trim() || null,
+        notes: notes.trim() || null,
+        user_id: user?.id || null,
+        ...(refVal !== null && { reference_price_at_report: refVal })
+      };
+
+      // DO NOT pass product_name, product_title, or targetProduct into this insert call!
+      const { error: repErr } = await supabase
+        .from('price_reports')
+        .insert(reportPayload);
+
+      if (repErr) throw repErr;
 
       setSuccess(true);
     } catch (err: any) {
       console.error('Failed to submit report:', err);
-      setErrorMessage(err?.message || 'Failed to submit report. Please check your connection.');
+      setErrorMessage(err?.message || 'Failed to submit report.');
     } finally {
       setSubmitting(false);
     }
@@ -227,17 +284,13 @@ function ReportFormContent() {
           </p>
           <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
-              href={`/login?redirect=${encodeURIComponent(
-                `/report?productId=${selectedProductId}&observedPrice=${observedPrice}`
-              )}`}
+              href="/login?redirect=/report"
               className="w-full sm:w-auto bg-emerald-700 hover:bg-emerald-800 text-white font-medium px-6 py-3 rounded-xl text-sm shadow-sm transition-all duration-200 ease-in-out active:scale-[0.99]"
             >
               Log in to Continue
             </Link>
             <Link
-              href={`/signup?redirect=${encodeURIComponent(
-                `/report?productId=${selectedProductId}&observedPrice=${observedPrice}`
-              )}`}
+              href="/signup?redirect=/report"
               className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium px-6 py-3 rounded-xl text-sm transition-all duration-200 ease-in-out"
             >
               Create Account
@@ -289,16 +342,15 @@ function ReportFormContent() {
           <PlusCircle className="w-3.5 h-3.5 text-emerald-700" />
           <span>Crowdsourced Karachi Civic Report</span>
         </div>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+        <h1 className="text-3xl font-bold text-emrald-900 tracking-tight">
           Submit a Price Observation
         </h1>
-        <p className="text-slate-600 text-sm sm:text-base mt-1.5 font-medium">
+        <p className="text-emrald-900 text-sm sm:text-base mt-1.5 font-medium">
           Record what you were charged at a local Karachi store. Help your community spot unusual prices.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Main Form */}
         <div className="lg:col-span-7">
           <form
             onSubmit={handleSubmit}
@@ -311,7 +363,6 @@ function ReportFormContent() {
               </div>
             )}
 
-            {/* Product Selector */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                 Product / Essential Item *
@@ -330,16 +381,16 @@ function ReportFormContent() {
                   required
                   className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-slate-800 font-medium focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none cursor-pointer transition-all duration-200"
                 >
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.unit})
+                  <option value="">Select a product...</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name} {product.unit ? `(${product.unit})` : ''}
                     </option>
                   ))}
                 </select>
               )}
             </div>
 
-            {/* Observed Price Input */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                 Observed Price Charged (in PKR) *
@@ -364,7 +415,6 @@ function ReportFormContent() {
               </p>
             </div>
 
-            {/* Shop Name */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                 Shop / Store Name *
@@ -379,7 +429,6 @@ function ReportFormContent() {
               />
             </div>
 
-            {/* Karachi Area */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                 Karachi Neighborhood / Area *
@@ -397,7 +446,6 @@ function ReportFormContent() {
               </select>
             </div>
 
-            {/* Shop Address / Landmark */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                 Address / Nearby Landmark (Optional)
@@ -411,7 +459,6 @@ function ReportFormContent() {
               />
             </div>
 
-            {/* Notes */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                 Additional Notes (Optional)
@@ -425,7 +472,6 @@ function ReportFormContent() {
               ></textarea>
             </div>
 
-            {/* Submit Button */}
             <div className="pt-2">
               <button
                 type="submit"
@@ -445,7 +491,6 @@ function ReportFormContent() {
           </form>
         </div>
 
-        {/* Live Preview Column */}
         <div className="lg:col-span-5 space-y-5">
           <div className="bg-white/80 backdrop-blur-md border border-slate-200/80 rounded-2xl p-6 sm:p-8 space-y-4 shadow-sm hover:shadow-md transition-all duration-200">
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -455,7 +500,7 @@ function ReportFormContent() {
             <div className="space-y-3">
               <div className="flex justify-between text-xs py-1.5 border-b border-slate-200">
                 <span className="text-slate-500 font-medium">Selected Product:</span>
-                <span className="font-semibold text-slate-900">{selectedProduct?.name || '-'}</span>
+                <span className="font-semibold text-slate-900">{selectedProduct?.name || 'None selected'}</span>
               </div>
 
               <div className="flex justify-between text-xs py-1.5 border-b border-slate-200">

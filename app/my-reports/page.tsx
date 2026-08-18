@@ -24,53 +24,99 @@ export default function MyReportsPage() {
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function loadUserReports() {
       if (!isSupabaseConfigured) {
-        setLoading(false);
+        if (isMounted) setLoading(false);
         return;
       }
 
       try {
-        setLoading(true);
+        if (isMounted) setLoading(true);
 
+        // Fetch current user via auth.getUser() for reliable state retrieval
         const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
+          data: { user: currentUser },
+          error: authError,
+        } = await supabase.auth.getUser();
 
-        if (currentUser) {
-          const { data, error } = await supabase
+        if (authError || !currentUser) {
+          if (isMounted) {
+            setUser(null);
+            setMyReports([]);
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (isMounted) setUser(currentUser);
+
+        // Primary relational query without strict INNER JOIN flags (!product_id / !shop_id)
+        let { data, error } = await supabase
+          .from('price_reports')
+          .select(`
+            id,
+            user_id,
+            product_id,
+            shop_id,
+            observed_price,
+            reference_price_at_report,
+            area,
+            status,
+            notes,
+            created_at,
+            product:products(id, name, category, unit),
+            shop:shops(id, name, area, address)
+          `)
+          .eq('user_id', currentUser.id)
+          .order('created_at', { ascending: false });
+
+        // Fallback: If relational query fails due to schema mismatch, fetch standard flat records
+        if (error) {
+          console.warn('Relational query failed, falling back to basic query:', error);
+          const fallbackRes = await supabase
             .from('price_reports')
-            .select(`
-              id,
-              user_id,
-              product_id,
-              shop_id,
-              observed_price,
-              reference_price_at_report,
-              area,
-              status,
-              notes,
-              created_at,
-              product:products(id, name, category, unit),
-              shop:shops(id, name, area, address)
-            `)
+            .select('*')
             .eq('user_id', currentUser.id)
             .order('created_at', { ascending: false });
 
-          if (!error && data) {
-            setMyReports(data as any);
+          if (!fallbackRes.error && fallbackRes.data) {
+            data = fallbackRes.data as any;
+            error = null;
           }
         }
+
+        if (!error && data && isMounted) {
+          setMyReports(data as any);
+        }
       } catch (err) {
-        console.error('Error fetching my reports:', err);
+        console.error('Error fetching user reports:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
 
     loadUserReports();
+
+    // Re-verify fetch on auth changes (login, logout, token refresh)
+    const { data: authSubscription } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (session?.user) {
+          setUser(session.user);
+          loadUserReports();
+        } else {
+          setUser(null);
+          setMyReports([]);
+          setLoading(false);
+        }
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      authSubscription?.subscription?.unsubscribe();
+    };
   }, []);
 
   if (!user && !loading) {
@@ -81,9 +127,11 @@ export default function MyReportsPage() {
           <div className="w-14 h-14 bg-emerald-100 text-emerald-800 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
             <LogIn className="w-7 h-7" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Sign in to View Your Reports</h2>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+            Sign in to View Your Reports
+          </h2>
           <p className="text-sm text-slate-600 font-medium">
-            Log in to view the history and status of price observations you have submitted to Kimat Check PK.
+            Log in to view the history and status of price observations you have submitted to Qeemat Check PK.
           </p>
           <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
@@ -170,7 +218,7 @@ export default function MyReportsPage() {
         </div>
       </div>
 
-      {/* Reports Table / Feed */}
+      {/* Reports Feed */}
       {loading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
@@ -206,7 +254,7 @@ export default function MyReportsPage() {
                       </span>
                       <span className="flex items-center gap-1 text-slate-500">
                         <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                        {rep.area || rep.shop?.area}, Karachi
+                        {rep.area || rep.shop?.area || 'Karachi'}, Karachi
                       </span>
                       <span className="flex items-center gap-1 text-slate-400">
                         <Calendar className="w-3.5 h-3.5" />

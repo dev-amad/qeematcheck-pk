@@ -61,7 +61,7 @@ function LoginFormContent() {
 
         <div className="text-center">
           <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-            Log in to Kimat Check PK
+            Log in to Qeemat Check PK
           </h2>
           <p className="mt-1 text-sm text-slate-600 font-medium">
             Sign in to submit Karachi grocery price observations.

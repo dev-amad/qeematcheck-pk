@@ -77,7 +77,7 @@ function SignUpFormContent() {
           </div>
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Account Created!</h2>
           <p className="text-sm text-slate-600 leading-relaxed font-medium">
-            Your account has been registered for Kimat Check PK. If Supabase email verification is active, please check your inbox before signing in.
+            Your account has been registered for Qeemat Check PK. If Supabase email verification is active, please check your inbox before signing in.
           </p>
           <div className="pt-4">
             <Link

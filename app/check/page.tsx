@@ -120,7 +120,7 @@ function CheckPriceContent() {
           <Calculator className="w-3.5 h-3.5 text-emerald-700" />
           <span>Karachi Price Verification Engine</span>
         </div>
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
+        <h1 className="text-3xl sm:text-4xl font-bold text-white-900 tracking-tight">
           Check a Shop Price
         </h1>
         <p className="text-slate-600 text-sm sm:text-base mt-1.5 max-w-2xl font-medium">

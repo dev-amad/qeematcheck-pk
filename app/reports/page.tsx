@@ -7,7 +7,6 @@ import {
   MapPin,
   Store,
   Calendar,
-  Filter,
   PlusCircle,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
@@ -20,8 +19,6 @@ import ConfigAlert from '@/components/ConfigAlert';
 export default function CommunityReportsPage() {
   const [reports, setReports] = useState<PriceReportWithDetails[]>([]);
   const [products, setProducts] = useState<ProductWithPrices[]>(FALLBACK_PRODUCTS);
-  const [selectedProductFilter, setSelectedProductFilter] = useState<string>('all');
-  const [selectedAreaFilter, setSelectedAreaFilter] = useState<string>('all');
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -66,19 +63,19 @@ export default function CommunityReportsPage() {
             id,
             user_id,
             product_id,
-            shop_id,
             observed_price,
             reference_price_at_report,
             area,
             status,
             notes,
             created_at,
-            product:products(id, name, category, unit),
-            shop:shops(id, name, area, address)
+            product:products!left(id, name, category, unit)
           `)
           .order('created_at', { ascending: false });
 
-        if (!error && repData) {
+        if (error) {
+          console.error('Error fetching community reports:', error.message);
+        } else if (repData) {
           setReports(repData as any);
         }
       } catch (err) {
@@ -92,22 +89,7 @@ export default function CommunityReportsPage() {
     loadReportsData();
   }, []);
 
-  const filteredReports = reports.filter((r) => {
-    const matchesProduct =
-      selectedProductFilter === 'all' || r.product_id === selectedProductFilter;
-    const matchesArea =
-      selectedAreaFilter === 'all' ||
-      r.area?.toLowerCase() === selectedAreaFilter.toLowerCase() ||
-      r.shop?.area?.toLowerCase() === selectedAreaFilter.toLowerCase();
-    return matchesProduct && matchesArea;
-  });
-
-  const areas = Array.from(
-    new Set(
-      reports.map((r) => r.area || r.shop?.area).filter(Boolean) as string[]
-    )
-  );
-
+  // Map individual reported shops / entries
   const shopAggregates = React.useMemo(() => {
     const map = new Map<string, {
       shopName: string;
@@ -119,10 +101,11 @@ export default function CommunityReportsPage() {
       productNames: Set<string>;
     }>();
 
-    filteredReports.forEach((rep) => {
-      const sName = rep.shop?.name || 'Local Store';
-      const sArea = rep.area || rep.shop?.area || 'Karachi';
-      const key = `${sName}__${sArea}`;
+    reports.forEach((rep) => {
+      const extractedShop = (rep as any).shop_name || rep.notes || 'Local Store';
+      const sName = extractedShop.length > 30 ? `${extractedShop.slice(0, 27)}...` : extractedShop;
+      const sArea = rep.area || 'Karachi';
+      const key = `${sName.toLowerCase()}__${sArea.toLowerCase()}__${rep.id}`;
 
       if (!map.has(key)) {
         map.set(key, {
@@ -148,7 +131,7 @@ export default function CommunityReportsPage() {
     });
 
     return Array.from(map.values());
-  }, [filteredReports]);
+  }, [reports]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -180,106 +163,11 @@ export default function CommunityReportsPage() {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200/80 p-5 mb-8 shadow-sm flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
-          <Filter className="w-4 h-4 text-emerald-700" />
-          <span>Filters:</span>
-        </div>
-
-        {/* Product Filter */}
-        <div className="flex-1 min-w-[200px]">
-          <select
-            value={selectedProductFilter}
-            onChange={(e) => setSelectedProductFilter(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 font-medium text-sm focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none cursor-pointer transition-all"
-          >
-            <option value="all">All Products ({products.length})</option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.unit})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Area Filter */}
-        <div className="w-full sm:w-56">
-          <select
-            value={selectedAreaFilter}
-            onChange={(e) => setSelectedAreaFilter(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 font-medium text-sm focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none cursor-pointer transition-all"
-          >
-            <option value="all">All Karachi Areas</option>
-            {areas.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Product Summary Aggregate */}
-      {selectedProductFilter !== 'all' && (
-        <div className="mb-8">
-          {(() => {
-            const currentProd = products.find((p) => p.id === selectedProductFilter);
-            const refVal = currentProd?.reference_prices?.[0]?.price;
-            const matchingReports = filteredReports.filter((r) => r.product_id === selectedProductFilter);
-            const prices = matchingReports.map((r) => r.observed_price);
-            const minPrice = prices.length > 0 ? Math.min(...prices) : null;
-            const maxPrice = prices.length > 0 ? Math.max(...prices) : null;
-
-            return (
-              <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl p-6 sm:p-8 shadow-md">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <span className="text-xs uppercase text-emerald-400 font-semibold tracking-wider">
-                      Product Summary
-                    </span>
-                    <h2 className="text-2xl font-bold">{currentProd?.name}</h2>
-                    <span className="text-xs text-slate-300 font-medium">Unit: per {currentProd?.unit}</span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-4 text-center">
-                    <div className="bg-slate-800/90 px-4 py-2.5 rounded-xl border border-slate-700">
-                      <span className="text-[10px] text-slate-400 uppercase font-medium block">Official Reference</span>
-                      <span className="text-lg font-bold font-mono text-emerald-400">
-                        {refVal ? formatPrice(refVal) : 'Unavailable'}
-                      </span>
-                    </div>
-
-                    <div className="bg-slate-800/90 px-4 py-2.5 rounded-xl border border-slate-700">
-                      <span className="text-[10px] text-slate-400 uppercase font-medium block">Reported Range</span>
-                      <span className="text-lg font-bold font-mono text-white">
-                        {minPrice !== null && maxPrice !== null
-                          ? minPrice === maxPrice
-                            ? formatPrice(minPrice)
-                            : `Rs. ${minPrice} – ${maxPrice}`
-                          : 'No reports yet'}
-                      </span>
-                    </div>
-
-                    <div className="bg-slate-800/90 px-4 py-2.5 rounded-xl border border-slate-700">
-                      <span className="text-[10px] text-slate-400 uppercase font-medium block">Total Reports</span>
-                      <span className="text-lg font-bold font-mono text-white">
-                        {matchingReports.length}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* Aggregated Shop Cards */}
+      {/* Reported Shops Section */}
       <div className="mb-10">
         <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
           <Store className="w-5 h-5 text-emerald-700" />
-          <span>Reported Karachi Shops ({shopAggregates.length})</span>
+          <span>Reported Shops ({shopAggregates.length})</span>
         </h2>
 
         {shopAggregates.length > 0 ? (
@@ -305,24 +193,26 @@ export default function CommunityReportsPage() {
                       <StatusBadge status={calc.status} size="sm" />
                     </div>
 
-                    <h3 className="text-lg font-bold text-slate-900">{shop.shopName}</h3>
+                    <h3 className="text-lg font-bold text-slate-900 truncate">{shop.shopName}</h3>
 
                     <div className="flex items-center gap-1 text-xs text-slate-500 font-medium mt-1">
                       <MapPin className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
                       <span>{shop.area}, Karachi</span>
                     </div>
 
-                    <div className="mt-3 text-xs text-slate-600">
-                      <span className="font-medium text-slate-700">Products reported: </span>
-                      <span>{Array.from(shop.productNames).join(', ')}</span>
-                    </div>
+                    {shop.productNames.size > 0 && (
+                      <div className="mt-3 text-xs text-slate-600">
+                        <span className="font-medium text-slate-700">Item: </span>
+                        <span>{Array.from(shop.productNames).join(', ')}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-slate-100 bg-slate-50/80 -mx-6 -mb-6 p-4 rounded-b-2xl">
                     <div className="flex items-baseline justify-between">
                       <div>
                         <span className="text-[10px] uppercase font-semibold text-slate-500 block">
-                          Typical Reported Price
+                          Reported Price
                         </span>
                         <span className="text-base font-bold font-mono text-slate-900">
                           {formatPrice(avgPrice)}
@@ -332,7 +222,7 @@ export default function CommunityReportsPage() {
                       {avgRefPrice !== null && (
                         <div className="text-right">
                           <span className="text-[10px] uppercase font-semibold text-slate-500 block">
-                            Avg Reference
+                            Govt Reference
                           </span>
                           <span className="text-xs font-mono font-medium text-slate-600">
                             {formatPrice(avgRefPrice)}
@@ -347,7 +237,7 @@ export default function CommunityReportsPage() {
           </div>
         ) : (
           <div className="bg-white/80 rounded-2xl border border-slate-200 p-8 text-center text-slate-500 font-medium">
-            No shop reports recorded yet for this filter.
+            No shop reports recorded yet.
           </div>
         )}
       </div>
@@ -355,7 +245,7 @@ export default function CommunityReportsPage() {
       {/* Individual Observations Feed */}
       <div>
         <h2 className="text-xl font-bold text-slate-900 mb-4">
-          All Submitted Observations ({filteredReports.length})
+          All Individual Reports ({reports.length})
         </h2>
 
         {loading ? (
@@ -364,9 +254,9 @@ export default function CommunityReportsPage() {
               <div key={i} className="h-16 bg-white/80 border border-slate-200 rounded-xl animate-pulse"></div>
             ))}
           </div>
-        ) : filteredReports.length > 0 ? (
+        ) : reports.length > 0 ? (
           <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-sm divide-y divide-slate-100 overflow-hidden">
-            {filteredReports.map((report) => {
+            {reports.map((report) => {
               const calc = calculatePriceDelta(
                 report.reference_price_at_report,
                 report.observed_price
@@ -384,13 +274,9 @@ export default function CommunityReportsPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 font-medium">
-                        <span className="flex items-center gap-1 text-slate-800">
-                          <Store className="w-3.5 h-3.5 text-slate-400" />
-                          {report.shop?.name || 'Local Shop'}
-                        </span>
                         <span className="flex items-center gap-1 text-slate-500">
                           <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                          {report.area || report.shop?.area}, Karachi
+                          {report.area || 'Karachi'}
                         </span>
                         <span className="flex items-center gap-1 text-slate-400">
                           <Calendar className="w-3.5 h-3.5" />
@@ -425,7 +311,7 @@ export default function CommunityReportsPage() {
           </div>
         ) : (
           <div className="bg-white/80 rounded-2xl border border-slate-200 p-10 text-center text-slate-500 font-medium">
-            No community price reports recorded yet for this selection.
+            No individual reports recorded yet.
           </div>
         )}
       </div>
