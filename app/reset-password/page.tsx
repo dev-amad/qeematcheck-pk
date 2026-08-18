@@ -1,11 +1,11 @@
 'use client';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
 function ResetPasswordForm() {
     const router = useRouter();
@@ -13,20 +13,9 @@ function ResetPasswordForm() {
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
-
-    useEffect(() => {
-        const client = createBrowserClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-        );
-        setSupabase(client);
-    }, []);
 
     const handleUpdatePassword = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!supabase) return;
-
         setLoading(true);
         setMessage(null);
         setError(null);
@@ -38,6 +27,10 @@ function ResetPasswordForm() {
         }
 
         try {
+            const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+            const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+            const supabase = createBrowserClient(url, key);
+
             const { error: updateError } = await supabase.auth.updateUser({
                 password: password,
             });
@@ -93,7 +86,7 @@ function ResetPasswordForm() {
 
                 <button
                     type="submit"
-                    disabled={loading || !supabase}
+                    disabled={loading}
                     className="w-full bg-[#5af0b3] text-[#003825] font-semibold py-3 px-6 rounded-xl hover:bg-[#34d399] transition font-mono text-xs uppercase tracking-wider disabled:opacity-50 mt-2"
                 >
                     {loading ? 'Updating...' : 'Update Password'}
@@ -106,7 +99,7 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
     return (
         <div className="min-h-screen bg-[#0c1324] text-[#dce1fb] flex items-center justify-center p-6">
-            <Suspense fallback={<div className="text-sm text-[#bbcac0]">Loading...</div>}>
+            <Suspense fallback={<div className="text-sm text-[#bbcac0]">Loading form...</div>}>
                 <ResetPasswordForm />
             </Suspense>
         </div>
