@@ -6,12 +6,12 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
   supabaseAnonKey &&
-  supabaseUrl !== 'https://your-supabase-project-id.supabase.co' &&
-  supabaseAnonKey !== 'your-supabase-anon-key-here' &&
-  supabaseUrl.trim().length > 0 &&
-  supabaseAnonKey.trim().length > 0
+  !supabaseUrl.includes('placeholder') &&
+  !supabaseUrl.includes('your-supabase-project-id')
 );
 
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : createClient('https://placeholder-url.supabase.co', 'placeholder-key');
+// Always create a valid client instance using the environment variables
+export const supabase = createClient(
+  supabaseUrl || 'https://xyzcompany.supabase.co',
+  supabaseAnonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy'
+);
