@@ -31,6 +31,7 @@ export default function CommunityReportsPage() {
           return;
         }
 
+        // Fetch products using the correct 'prices' relation table name
         const { data: prodData } = await supabase
           .from('products')
           .select(`
@@ -38,7 +39,7 @@ export default function CommunityReportsPage() {
             name,
             category,
             unit,
-            reference_prices (
+            prices (
               id,
               price,
               unit,
@@ -51,7 +52,7 @@ export default function CommunityReportsPage() {
           .order('name');
 
         if (prodData && prodData.length > 0) {
-          setProducts(prodData as ProductWithPrices[]);
+          setProducts(prodData as unknown as ProductWithPrices[]);
         } else {
           setProducts(FALLBACK_PRODUCTS);
         }
