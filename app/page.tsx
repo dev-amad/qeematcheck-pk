@@ -1,319 +1,161 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import {
-  FileSpreadsheet,
-  MapPin,
-  Store,
-  Calendar,
-  PlusCircle,
-} from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
-import { PriceReportWithDetails } from '@/lib/supabase/types';
-import { FALLBACK_PRODUCTS, ProductWithPrices } from '@/lib/data/seedFallback';
-import { calculatePriceDelta, formatPrice, formatDate } from '@/lib/utils';
-import StatusBadge from '@/components/StatusBadge';
-import ConfigAlert from '@/components/ConfigAlert';
+import { createBrowserClient } from '@supabase/ssr';
+import type { User } from '@supabase/supabase-js';
+import MarketFacts from '@/src/components/MarketFacts';
 
-export default function CommunityReportsPage() {
-  const [reports, setReports] = useState<PriceReportWithDetails[]>([]);
-  const [products, setProducts] = useState<ProductWithPrices[]>(FALLBACK_PRODUCTS);
-  const [loading, setLoading] = useState<boolean>(true);
+// Initialize Supabase globally with non-null assertions so Vercel builds pass cleanly
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+export default function HomePage() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadReportsData() {
+    // Check initial auth state
+    const checkUser = async () => {
       try {
-        setLoading(true);
-
-        if (!isSupabaseConfigured) {
-          setProducts(FALLBACK_PRODUCTS);
-          return;
-        }
-
-        const { data: prodData } = await supabase
-          .from('products')
-          .select(`
-            id,
-            name,
-            category,
-            unit,
-            prices (
-              id,
-              price,
-              unit,
-              source,
-              effective_date,
-              area,
-              is_available
-            )
-          `)
-          .order('name');
-
-        if (prodData && prodData.length > 0) {
-          setProducts(prodData as ProductWithPrices[]);
-        } else {
-          setProducts(FALLBACK_PRODUCTS);
-        }
-
-        const { data: repData, error } = await supabase
-          .from('price_reports')
-          .select(`
-            id,
-            user_id,
-            product_id,
-            observed_price,
-            reference_price_at_report,
-            area,
-            status,
-            notes,
-            created_at,
-            product:products!left(id, name, category, unit)
-          `)
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          console.error('Error fetching community reports:', error.message);
-        } else if (repData) {
-          setReports(repData as any);
-        }
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user ?? null);
       } catch (err) {
-        console.warn('Error fetching community reports:', err);
-        setProducts(FALLBACK_PRODUCTS);
+        console.error('Error checking session:', err);
       } finally {
         setLoading(false);
       }
-    }
+    };
 
-    loadReportsData();
-  }, []);
+    checkUser();
 
-  // Map individual reported shops / entries
-  const shopAggregates = React.useMemo(() => {
-    const map = new Map<string, {
-      shopName: string;
-      area: string;
-      reportCount: number;
-      prices: number[];
-      referencePrices: number[];
-      latestDate: string;
-      productNames: Set<string>;
-    }>();
-
-    reports.forEach((rep) => {
-      const extractedShop = (rep as any).shop_name || rep.notes || 'Local Store';
-      const sName = extractedShop.length > 30 ? `${extractedShop.slice(0, 27)}...` : extractedShop;
-      const sArea = rep.area || 'Karachi';
-      const key = `${sName.toLowerCase()}__${sArea.toLowerCase()}__${rep.id}`;
-
-      if (!map.has(key)) {
-        map.set(key, {
-          shopName: sName,
-          area: sArea,
-          reportCount: 0,
-          prices: [],
-          referencePrices: [],
-          latestDate: rep.created_at,
-          productNames: new Set(),
-        });
-      }
-
-      const item = map.get(key)!;
-      item.reportCount += 1;
-      item.prices.push(rep.observed_price);
-      if (rep.reference_price_at_report) {
-        item.referencePrices.push(rep.reference_price_at_report);
-      }
-      if (rep.product?.name) {
-        item.productNames.add(rep.product.name);
-      }
+    // Real-time listener for authentication state updates
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
     });
 
-    return Array.from(map.values());
-  }, [reports]);
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      <ConfigAlert />
+    <div className="flex flex-col w-full relative overflow-hidden bg-[#0c1324] text-[#dce1fb] min-h-screen">
+      {/* Background decorative glowing elements */}
+      <div className="absolute top-0 left-0 w-full h-screen overflow-hidden -z-10 pointer-events-none">
+        <div className="absolute -top-[20%] -right-[10%] w-[60%] h-[60%] rounded-full bg-[#5af0b3]/5 blur-[120px]"></div>
+        <div className="absolute top-[40%] -left-[10%] w-[40%] h-[40%] rounded-full bg-[#3333c2]/10 blur-[100px]"></div>
+      </div>
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div>
-          <div className="inline-flex items-center gap-1.5 bg-emerald-100/90 text-emerald-900 border border-emerald-200 text-xs font-semibold px-3.5 py-1.5 rounded-full mb-2">
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Crowdsourced Karachi Data</span>
+      {/* Hero Section */}
+      <section className="w-full min-h-[600px] flex items-center justify-center pt-20 px-6 sm:px-10 relative z-10">
+        <div className="max-w-[1280px] mx-auto w-full flex flex-col items-center text-center gap-8 z-10">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#191f31] border border-[#2e3447] backdrop-blur-md">
+            <span className="w-2 h-2 rounded-full bg-[#5af0b3] animate-pulse"></span>
+            <span className="text-[#bbcac0] text-xs font-semibold tracking-widest uppercase font-mono">
+              Live Tracking Karachi Vendors Prices
+            </span>
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-            Community Price Reports
+
+          <h1 className="text-[#dce1fb] font-bold text-4xl sm:text-6xl lg:text-7xl leading-[1.1] tracking-tight max-w-4xl">
+            Never Get OverCharged Again
           </h1>
-          <p className="text-slate-600 text-sm sm:text-base mt-1 font-medium">
-            Aggregated consumer observations across Karachi grocery stores and neighborhood markets.
+
+          <p className="text-[#bbcac0] text-lg sm:text-xl max-w-2xl leading-relaxed">
+            Real-time market price tracking and shopkeeper safeguard features to ensure fair trade for everyone.
           </p>
-        </div>
 
-        <div>
-          <Link
-            href="/report"
-            className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-5 py-3 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 ease-in-out active:scale-[0.99]"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Submit Price Report</span>
-          </Link>
-        </div>
-      </div>
+          <div className="flex flex-col sm:flex-row gap-4 mt-4 w-full sm:w-auto justify-center">
+            <Link
+              href="#about"
+              className="px-8 py-4 bg-[#5af0b3] text-[#003825] font-semibold text-xs tracking-wider uppercase rounded-xl shadow-[0_0_20px_rgba(90,240,179,0.3)] hover:shadow-[0_0_30px_rgba(90,240,179,0.5)] hover:-translate-y-1 transition-all duration-300 flex items-center justify-center gap-2 group font-mono"
+            >
+              EXPLORE PLATFORM
+              <span className="material-symbols-outlined text-[18px] group-hover:translate-x-1 transition-transform">
+                arrow_forward
+              </span>
+            </Link>
 
-      {/* Reported Shops Section */}
-      <div className="mb-10">
-        <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-          <Store className="w-5 h-5 text-emerald-700" />
-          <span>Reported Shops ({shopAggregates.length})</span>
-        </h2>
-
-        {shopAggregates.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {shopAggregates.map((shop, idx) => {
-              const avgPrice = shop.prices.reduce((a, b) => a + b, 0) / shop.prices.length;
-              const avgRefPrice =
-                shop.referencePrices.length > 0
-                  ? shop.referencePrices.reduce((a, b) => a + b, 0) / shop.referencePrices.length
-                  : null;
-              const calc = calculatePriceDelta(avgRefPrice, avgPrice);
-
-              return (
-                <div
-                  key={idx}
-                  className="bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200/90 p-6 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-200 flex flex-col justify-between"
+            {/* Auth status indicator or navigation */}
+            {!loading && (
+              user ? (
+                <div className="px-6 py-4 bg-[#191f31] border border-[#5af0b3]/30 text-[#5af0b3] font-mono text-xs rounded-xl flex items-center justify-center">
+                  Logged in as {user.email}
+                </div>
+              ) : (
+                <Link
+                  href="/login"
+                  className="px-8 py-4 bg-[#191f31] border border-[#2e3447] text-[#bbcac0] hover:text-[#dce1fb] hover:border-[#5af0b3]/50 font-semibold text-xs tracking-wider uppercase rounded-xl transition-all duration-300 flex items-center justify-center font-mono"
                 >
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="text-xs font-semibold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full">
-                        {shop.reportCount} report{shop.reportCount === 1 ? '' : 's'}
-                      </span>
-                      <StatusBadge status={calc.status} size="sm" />
-                    </div>
+                  ACCOUNT LOGIN
+                </Link>
+              )
+            )}
+          </div>
+        </div>
+      </section>
 
-                    <h3 className="text-lg font-bold text-slate-900 truncate">{shop.shopName}</h3>
-
-                    <div className="flex items-center gap-1 text-xs text-slate-500 font-medium mt-1">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                      <span>{shop.area}, Karachi</span>
-                    </div>
-
-                    {shop.productNames.size > 0 && (
-                      <div className="mt-3 text-xs text-slate-600">
-                        <span className="font-medium text-slate-700">Item: </span>
-                        <span>{Array.from(shop.productNames).join(', ')}</span>
-                      </div>
-                    )}
+      {/* About Section */}
+      <section id="about" className="w-full bg-[#191f31] py-24 relative z-20 border-t border-b border-[#2e3447]/50">
+        <div className="max-w-[1280px] mx-auto px-6 sm:px-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+            {/* Image Container */}
+            <div className="grid grid-cols-1 gap-6 w-full">
+              <div className="relative h-[280px] w-full rounded-2xl overflow-hidden shadow-2xl group border border-[#2e3447]">
+                <div
+                  className="absolute inset-0 bg-cover bg-center w-full h-full mix-blend-luminosity group-hover:mix-blend-normal transition-all duration-1000"
+                  style={{
+                    backgroundImage: `url('https://lh3.googleusercontent.com/aida-public/AB6AXuB40uskCico2vm6cN4kALcW5qAXMtG0HWNUnpP7-X-twgS7AlwvZUiUGCy2MyWOSD7K_M5ZL5VnFOH5pOt3_YNvYtcTIWL3ckfLxvGpu8co6m-oF_a--Yvx4lsL6uIBtWPNgjjhoLKbxOO0brdQcyDDdWGuluXfAjd--wmBFaZjAjFT8OcTQelPUwFbmWrDZRwDxMhjZDR4XTWtFQMXjc4W19gRJPLFFrk3hTLdFZKiS5jLmGzwoRzn_g')`,
+                  }}
+                ></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#191f31] via-[#191f31]/40 to-transparent"></div>
+                <div className="absolute bottom-6 left-6 right-6 p-4 bg-[#0c1324]/80 backdrop-blur-xl border border-[#2e3447] rounded-xl">
+                  <div className="flex items-center gap-3 mb-1">
+                    <h4 className="text-[#dce1fb] font-semibold text-lg">Merchant Safeguard</h4>
                   </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100 bg-slate-50/80 -mx-6 -mb-6 p-4 rounded-b-2xl">
-                    <div className="flex items-baseline justify-between">
-                      <div>
-                        <span className="text-[10px] uppercase font-semibold text-slate-500 block">
-                          Reported Price
-                        </span>
-                        <span className="text-base font-bold font-mono text-slate-900">
-                          {formatPrice(avgPrice)}
-                        </span>
-                      </div>
-
-                      {avgRefPrice !== null && (
-                        <div className="text-right">
-                          <span className="text-[10px] uppercase font-semibold text-slate-500 block">
-                            Govt Reference
-                          </span>
-                          <span className="text-xs font-mono font-medium text-slate-600">
-                            {formatPrice(avgRefPrice)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  <p className="text-[#bbcac0] text-xs">
+                    Dynamic pricing models protect small vendors from volatile market shifts.
+                  </p>
                 </div>
-              );
-            })}
+              </div>
+
+              <div className="relative h-[280px] w-full rounded-2xl overflow-hidden shadow-2xl group border border-[#2e3447]">
+                <div
+                  className="absolute inset-0 bg-cover bg-center w-full h-full mix-blend-luminosity group-hover:mix-blend-normal transition-all duration-1000"
+                  style={{
+                    backgroundImage: `url('https://lh3.googleusercontent.com/aida-public/AB6AXuD7i1-gkPqHQELTCh_EmF6VLTNEDshSjIk2OMbAmcVgWXSOek6sFyrD-u8iN21k3kSCFWOTGHKKCA_440AhaYeZzAev4LLRvw59MURTE4zZwnUa2yiHLI9wVbPfJw_8QhaqcOhQUe576hi8gS1G03SJYRlJEVnEP7i3e27pA7WtrowzuS5aZIiyrh5Xuxq2mJgxg1bMRttXbvf5YwX0-QB2Wps5_n5zm-PcMvutBWa5sHazApKgK3WmJA')`,
+                  }}
+                ></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#191f31] via-[#191f31]/40 to-transparent"></div>
+              </div>
+            </div>
+
+            {/* About Copy */}
+            <div className="flex flex-col gap-8">
+              <div>
+                <h2 className="text-[#5af0b3] text-xs font-semibold tracking-widest uppercase mb-4 flex items-center gap-2 font-mono">
+                  <span className="w-8 h-[1px] bg-[#5af0b3]"></span> ABOUT QEEMATCHECK
+                </h2>
+                <h3 className="text-[#dce1fb] font-bold text-3xl sm:text-4xl md:text-5xl leading-tight">
+                  Bridging the Gap in Karachi&apos;s Markets
+                </h3>
+              </div>
+              <p className="text-[#bbcac0] text-lg leading-relaxed">
+                Built for Karachiites, QeematCheck bridges the gap between everyday consumers and local merchants. We provide real-time market price transparency to protect citizens from unfair overcharging across city bazaars.
+              </p>
+              <p className="text-[#bbcac0] text-lg leading-relaxed">
+                Simultaneously, we embed smart pricing safeguards that protect small shop owners from operating losses and volatile wholesale market shifts. Fair trade, transparent markets.
+              </p>
+            </div>
           </div>
-        ) : (
-          <div className="bg-white/80 rounded-2xl border border-slate-200 p-8 text-center text-slate-500 font-medium">
-            No shop reports recorded yet.
-          </div>
-        )}
-      </div>
+        </div>
+      </section>
 
-      {/* Individual Observations Feed */}
-      <div>
-        <h2 className="text-xl font-bold text-slate-900 mb-4">
-          All Individual Reports ({reports.length})
-        </h2>
-
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 bg-white/80 border border-slate-200 rounded-xl animate-pulse"></div>
-            ))}
-          </div>
-        ) : reports.length > 0 ? (
-          <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-sm divide-y divide-slate-100 overflow-hidden">
-            {reports.map((report) => {
-              const calc = calculatePriceDelta(
-                report.reference_price_at_report,
-                report.observed_price
-              );
-
-              return (
-                <div key={report.id} className="p-5 hover:bg-slate-50/80 transition-colors">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="font-bold text-slate-900 text-base">
-                          {report.product?.name || 'Essential Item'}
-                        </h4>
-                        <StatusBadge status={calc.status} size="sm" />
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 font-medium">
-                        <span className="flex items-center gap-1 text-slate-500">
-                          <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                          {report.area || 'Karachi'}
-                        </span>
-                        <span className="flex items-center gap-1 text-slate-400">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {formatDate(report.created_at)}
-                        </span>
-                      </div>
-
-                      {report.notes && (
-                        <p className="text-xs text-slate-500 italic mt-1">&ldquo;{report.notes}&rdquo;</p>
-                      )}
-                    </div>
-
-                    <div className="text-right flex-shrink-0">
-                      <div className="text-base font-bold font-mono text-slate-900">
-                        {formatPrice(report.observed_price)}
-                        <span className="text-xs font-normal text-slate-500 ml-1">
-                          /{report.product?.unit || 'unit'}
-                        </span>
-                      </div>
-                      {report.reference_price_at_report && (
-                        <div className="text-xs text-slate-500 font-mono font-medium">
-                          Ref: {formatPrice(report.reference_price_at_report)} (
-                          {calc.diffRupees !== null && calc.diffRupees >= 0 ? '+' : ''}
-                          {calc.diffRupees !== null ? formatPrice(calc.diffRupees) : ''})
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="bg-white/80 rounded-2xl border border-slate-200 p-10 text-center text-slate-500 font-medium">
-            No individual reports recorded yet.
-          </div>
-        )}
-      </div>
+      {/* Market Facts Section */}
+      <MarketFacts />
     </div>
   );
 }
