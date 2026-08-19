@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
-  Store,
+  Calculator,
   FileText,
   PlusCircle,
   ShieldCheck,
@@ -16,9 +16,9 @@ export default function Navbar() {
 
   const navItems = [
     {
-      name: 'Products',
+      name: 'Check Price',
       href: '/',
-      icon: Store,
+      icon: Calculator,
     },
     {
       name: 'Price Reports',
