@@ -23,14 +23,13 @@ export default function CommunityReportsPage() {
 
   useEffect(() => {
     async function loadReportsData() {
-      if (!isSupabaseConfigured) {
-        setProducts(FALLBACK_PRODUCTS);
-        setLoading(false);
-        return;
-      }
-
       try {
         setLoading(true);
+
+        if (!isSupabaseConfigured) {
+          setProducts(FALLBACK_PRODUCTS);
+          return;
+        }
 
         const { data: prodData } = await supabase
           .from('products')
