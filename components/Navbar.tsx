@@ -6,12 +6,10 @@ import { usePathname } from 'next/navigation';
 import {
   Calculator,
   PlusCircle,
-  BarChart3,
-  ShieldCheck,
+  FileText,
   Menu,
   X,
   Store,
-  HelpCircle,
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -33,10 +31,10 @@ export default function Navbar() {
       description: 'Submit a price observation',
     },
     {
-      name: 'Official Rates',
-      href: '/rates',
-      icon: ShieldCheck,
-      description: 'Notified Karachi commissioner rates',
+      name: 'Community Reports',
+      href: '/reports',
+      icon: FileText,
+      description: 'Browse submitted community price observations',
     },
   ];
 
